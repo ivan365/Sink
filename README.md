@@ -64,4 +64,21 @@ Many development environments (emulators, local web servers, or embedded systems
 This project is licensed under the **(GNU GPL 3.0)**.
 
 ---
+
+## 🛠 Build & Installation
+
+Since **Sink** is written in pure C, it has no dependencies and is extremely easy to build on macOS, Linux, or Windows.
+
+### 1. Requirements
+* A C compiler (like `gcc` or `clang`)
+* `make` (optional, but recommended)
+
+### 2. Compilation
+Open your terminal in the project folder and run:
+
+```bash
+gcc main.c -o sink
+```
+
+---
 *Created with Love for developers who hate digging through AppData folders.*
