@@ -1,0 +1,6 @@
+sink
+.sinksettings
+.sinklang
+*.o
+.DS_Store
+compiled/
