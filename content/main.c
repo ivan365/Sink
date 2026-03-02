@@ -15,10 +15,9 @@
     #define SEP '/'
 #endif
 
-#define MAX_IGNORE 128
 #define MAX_PATH 4096
 
-// --- ЛОКАЛИЗАЦИЯ (Словарь) ---
+// --- LOCALIZATION ---
 
 typedef struct {
     char *help;
@@ -35,7 +34,7 @@ typedef struct {
 } Locale;
 
 Locale en = {
-    "\n⚓ SINK CLI - Stop syncing, start sinking.\n\nUSAGE:\n  sink init <path>      - Link project to a target\n  sink push             - Sink all files\n  sink add-ignore <val> - Keep a file afloat (ignore)\n  sink lang <en|ru|ua>  - Change language\n",
+    "\n⚓ SINK CLI - Stop syncing, start sinking.\n\nUSAGE:\n  sink init <path>      - Link project to a target\n  sink push             - Sink all files\n  sink add-ignore <val> - Keep a path afloat (ignore)\n  sink lang <en|ru|ua>  - Change language\n",
     "⚓ Anchor dropped! Linked to: %s\n",
     "💡 Ready to sink. Use 'sink push' when ready.\n",
     "🚀 Sinking files to: %s\n",
@@ -49,7 +48,7 @@ Locale en = {
 };
 
 Locale ru = {
-    "\n⚓ SINK CLI - Хватит синхронизировать, пора сливать.\n\nКОМАНДЫ:\n  sink init <путь>      - Привязать проект к цели\n  sink push             - Слить (sink) все файлы\n  sink add-ignore <имя> - Оставить файл на плаву (игнор)\n  sink lang <en|ru|ua>  - Сменить язык\n",
+    "\n⚓ SINK CLI - Хватит синхронизировать, пора сливать.\n\nКОМАНДЫ:\n  sink init <путь>      - Привязать проект к цели\n  sink push             - Слить (sink) все файлы\n  sink add-ignore <имя> - Оставить путь на плаву (игнор)\n  sink lang <en|ru|ua>  - Сменить язык\n",
     "⚓ Якорь брошен! Привязано к: %s\n",
     "💡 Все готово. Используй 'sink push', чтобы слить файлы.\n",
     "🚀 Сливаем файлы в: %s\n",
@@ -63,7 +62,7 @@ Locale ru = {
 };
 
 Locale ua = {
-    "\n⚓ SINK CLI - Досить синхронізувати, час зливати.\n\nКОМАНДИ:\n  sink init <шлях>      - Прив'язати проект до цілі\n  sink push             - Злити (sink) всі файли\n  sink add-ignore <ім'я> - Залишити файл на плаву (ігнор)\n  sink lang <en|ru|ua>  - Змінити мову\n",
+    "\n⚓ SINK CLI - Досить синхронізувати, час зливати.\n\nКОМАНДИ:\n  sink init <шлях>      - Прив'язати проект до цілі\n  sink push             - Злити (sink) всі файли\n  sink add-ignore <ім'я> - Залишити шлях на плаву (ігнор)\n  sink lang <en|ru|ua>  - Змінити мову\n",
     "⚓ Якір кинуто! Прив'язано до: %s\n",
     "💡 Все готово. Використовуй 'sink push', щоб злити файли.\n",
     "🚀 Зливаємо файли у: %s\n",
@@ -77,6 +76,8 @@ Locale ua = {
 };
 
 Locale *cur = &en;
+
+// --- UTILITIES ---
 
 void set_lang(const char *l) {
     if (strcmp(l, "ru") == 0) cur = &ru;
@@ -146,31 +147,49 @@ char **read_lines(const char *filepath, int *line_count) {
     return lines;
 }
 
-int is_ignored(const char *filename, char **ignore_list, int ignore_count) {
-    if (strcmp(filename, ".") == 0 || strcmp(filename, "..") == 0) return 1;
-    if (strcmp(filename, ".sinksettings") == 0 || strcmp(filename, ".sinkignore") == 0 ||
-        strcmp(filename, ".sinklang") == 0 || strcmp(filename, ".git") == 0 || 
-        strcmp(filename, "sink") == 0 || strcmp(filename, ".DS_Store") == 0) return 1;
-    for (int i = 0; i < ignore_count; i++) if (strcmp(filename, ignore_list[i]) == 0) return 1;
+// ПРОВЕРКА ИГНОРА ПО ПУТИ
+int is_ignored(const char *rel_path, char **ignore_list, int ignore_count) {
+    if (strcmp(rel_path, ".") == 0 || strcmp(rel_path, "..") == 0) return 1;
+    // Базовые системные исключения
+    if (strstr(rel_path, ".sinksettings") || strstr(rel_path, ".sinkignore") ||
+        strstr(rel_path, ".sinklang") || strstr(rel_path, ".git") || 
+        strstr(rel_path, ".DS_Store")) return 1;
+
+    for (int i = 0; i < ignore_count; i++) {
+        if (strcmp(rel_path, ignore_list[i]) == 0) return 1;
+    }
     return 0;
 }
 
-void sink_directory(const char *src_base, const char *dst_base, char **ignore_list, int ignore_count) {
-    DIR *dir = opendir(src_base);
+void sink_directory(const char *src_dir, const char *dst_dir, const char *current_rel_path, char **ignore_list, int ignore_count) {
+    DIR *dir = opendir(src_dir);
     if (!dir) return;
-    recursive_mkdir(dst_base);
+
+    recursive_mkdir(dst_dir);
     struct dirent *entry;
+
     while ((entry = readdir(dir)) != NULL) {
-        if (is_ignored(entry->d_name, ignore_list, ignore_count)) continue;
-        char src_path[MAX_PATH], dst_path[MAX_PATH];
-        if (strcmp(src_base, ".") == 0) snprintf(src_path, sizeof(src_path), "%s", entry->d_name);
-        else snprintf(src_path, sizeof(src_path), "%s/%s", src_base, entry->d_name);
-        snprintf(dst_path, sizeof(dst_path), "%s/%s", dst_base, entry->d_name);
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
+
+        // Формируем относительный путь для проверки игнора
+        char rel_path[MAX_PATH];
+        if (strlen(current_rel_path) == 0) snprintf(rel_path, sizeof(rel_path), "%s", entry->d_name);
+        else snprintf(rel_path, sizeof(rel_path), "%s/%s", current_rel_path, entry->d_name);
+
+        if (is_ignored(rel_path, ignore_list, ignore_count)) continue;
+
+        char src_full[MAX_PATH], dst_full[MAX_PATH];
+        snprintf(src_full, sizeof(src_full), "%s/%s", src_dir, entry->d_name);
+        snprintf(dst_full, sizeof(dst_full), "%s/%s", dst_dir, entry->d_name);
+
         struct stat st;
-        if (lstat(src_path, &st) == 0) {
-            if (S_ISDIR(st.st_mode)) sink_directory(src_path, dst_path, ignore_list, ignore_count);
-            else if (S_ISREG(st.st_mode)) {
-                if (copy_file(src_path, dst_path) == 0) printf("  ⚓ [SUNK] %s\n", entry->d_name);
+        if (lstat(src_full, &st) == 0) {
+            if (S_ISDIR(st.st_mode)) {
+                sink_directory(src_full, dst_full, rel_path, ignore_list, ignore_count);
+            } else if (S_ISREG(st.st_mode)) {
+                if (copy_file(src_full, dst_full) == 0) {
+                    printf("  ⚓ [SUNK] %s\n", rel_path);
+                }
             }
         }
     }
@@ -188,7 +207,7 @@ int main(int argc, char const *argv[]) {
         FILE *f = fopen(".sinksettings", "w");
         if (f) { fprintf(f, "%s\n", argv[2]); fclose(f); }
         FILE *i = fopen(".sinkignore", "w");
-        if (i) { fprintf(i, ".sinkignore\n.sinksettings\n.git\nsink\n.DS_Store\n.sinklang\n"); fclose(i); }
+        if (i) { fprintf(i, ".sinkignore\n.sinksettings\n.git\nsink\n.DS_Store\n.sinklang\ncompiled\n"); fclose(i); }
         printf(cur->init_success, argv[2]);
         printf("%s", cur->ready_to_sink);
     } 
@@ -199,7 +218,7 @@ int main(int argc, char const *argv[]) {
         if (!targets) { printf("%s", cur->err_no_targets); return 1; }
         for (int i = 0; i < t_count; i++) {
             printf(cur->sinking_to, targets[i]);
-            sink_directory(".", targets[i], ignores, i_count);
+            sink_directory(".", targets[i], "", ignores, i_count);
             free(targets[i]);
         }
         free(targets);
