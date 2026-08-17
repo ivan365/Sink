@@ -26,7 +26,7 @@ Many development environments (emulators, local web servers, or embedded systems
 ### 🚀 Quick Start
 1.  **Initialize:** `sink init /path/to/target/` (creates a `.sink` config).
 2.  **Configure:** Add unwanted files to `.sinkignore`.
-3.  **Push:** Run `sink push` to instantly mirror your files to the target.
+3.  **Push:** Run `sink push` to instantly mirror your files to the target. Use `sink push -c` for a clean transfer (deletes all contents in target directory before copying).
 
 ---
 
@@ -48,7 +48,7 @@ Many development environments (emulators, local web servers, or embedded systems
 ### 🚀 Швидкий старт
 1.  **Ініціалізація:** `sink init /шлях/до/цілі/` (створює конфіг `.sink`).
 2.  **Налаштування:** Додайте виключення у `.sinkignore`.
-3.  **Пуш:** Запустіть `sink push`, щоб миттєво віддзеркалити файли.
+3.  **Пуш:** Запустіть `sink push`, щоб миттєво віддзеркалити файли. Використовуйте `sink push -c` для чистого переносу (видаляє весь вміст цільової папки перед копіюванням).
 
 ---
 
@@ -57,7 +57,7 @@ Many development environments (emulators, local web servers, or embedded systems
 | Command | Description | Опис |
 | :--- | :--- | :--- |
 | `sink init <path>` | Link current folder to a target | Прив'язати папку до цілі |
-| `sink push` | Copy files to target | Копіювати файли до цілі |
+| `sink push [-c]` | Copy files to target (`-c` cleans target first) | Копіювати файли до цілі (`-c` спочатку очищує ціль) |
 | `sink status` | Show current configuration | Показати поточні налаштування |
 
 ## 📄 License

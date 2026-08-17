@@ -31,10 +31,11 @@ typedef struct {
     char *err_source;
     char *err_dest;
     char *lang_set;
+    char *cleaning_target;
 } Locale;
 
 Locale en = {
-    "\n⚓ SINK CLI - Stop syncing, start sinking.\n\nUSAGE:\n  sink init <path>      - Link project to a target\n  sink push             - Sink all files\n  sink add-ignore <val> - Keep a path afloat (ignore)\n  sink lang <en|ru|ua>  - Change language\n",
+    "\n⚓ SINK CLI - Stop syncing, start sinking.\n\nUSAGE:\n  sink init <path>      - Link project to a target\n  sink push [-c]        - Sink all files (-c for clean transfer)\n  sink add-ignore <val> - Keep a path afloat (ignore)\n  sink lang <en|ru|ua>  - Change language\n",
     "⚓ Anchor dropped! Linked to: %s\n",
     "💡 Ready to sink. Use 'sink push' when ready.\n",
     "🚀 Sinking files to: %s\n",
@@ -44,11 +45,12 @@ Locale en = {
     "❌ Error: Path required.\n",
     "  ❌ [ERR] Source: %s (%s)\n",
     "  ❌ [ERR] Dest: %s (%s)\n",
-    "Language set to English.\n"
+    "Language set to English.\n",
+    "🧹 Cleaning target directory: %s\n"
 };
 
 Locale ru = {
-    "\n⚓ SINK CLI - Хватит синхронизировать, пора сливать.\n\nКОМАНДЫ:\n  sink init <путь>      - Привязать проект к цели\n  sink push             - Слить (sink) все файлы\n  sink add-ignore <имя> - Оставить путь на плаву (игнор)\n  sink lang <en|ru|ua>  - Сменить язык\n",
+    "\n⚓ SINK CLI - Хватит синхронизировать, пора сливать.\n\nКОМАНДЫ:\n  sink init <путь>      - Привязать проект к цели\n  sink push [-c]        - Слить (sink) все файлы (-c для полной очистки цели)\n  sink add-ignore <имя> - Оставить путь на плаву (игнор)\n  sink lang <en|ru|ua>  - Сменить язык\n",
     "⚓ Якорь брошен! Привязано к: %s\n",
     "💡 Все готово. Используй 'sink push', чтобы слить файлы.\n",
     "🚀 Сливаем файлы в: %s\n",
@@ -58,11 +60,12 @@ Locale ru = {
     "❌ Ошибка: Укажи путь.\n",
     "  ❌ [ОШИБКА] Исходник: %s (%s)\n",
     "  ❌ [ОШИБКА] Цель: %s (%s)\n",
-    "Язык установлен: Русский.\n"
+    "Язык установлен: Русский.\n",
+    "🧹 Очистка целевой директории: %s\n"
 };
 
 Locale ua = {
-    "\n⚓ SINK CLI - Досить синхронізувати, час зливати.\n\nКОМАНДИ:\n  sink init <шлях>      - Прив'язати проект до цілі\n  sink push             - Злити (sink) всі файли\n  sink add-ignore <ім'я> - Залишити шлях на плаву (ігнор)\n  sink lang <en|ru|ua>  - Змінити мову\n",
+    "\n⚓ SINK CLI - Досить синхронізувати, час зливати.\n\nКОМАНДИ:\n  sink init <шлях>      - Прив'язати проект до цілі\n  sink push [-c]        - Злити (sink) всі файли (-c для повного очищення цілі)\n  sink add-ignore <ім'я> - Залишити шлях на плаву (ігнор)\n  sink lang <en|ru|ua>  - Змінити мову\n",
     "⚓ Якір кинуто! Прив'язано до: %s\n",
     "💡 Все готово. Використовуй 'sink push', щоб злити файли.\n",
     "🚀 Зливаємо файли у: %s\n",
@@ -72,7 +75,8 @@ Locale ua = {
     "❌ Помилка: Вкажи шлях.\n",
     "  ❌ [ПОМИЛКА] Джерело: %s (%s)\n",
     "  ❌ [ПОМИЛКА] Ціль: %s (%s)\n",
-    "Мову змінено на Українську.\n"
+    "Мову змінено на Українську.\n",
+    "🧹 Очищення цільової директорії: %s\n"
 };
 
 Locale *cur = &en;
@@ -196,6 +200,34 @@ void sink_directory(const char *src_dir, const char *dst_dir, const char *curren
     closedir(dir);
 }
 
+void delete_directory_contents(const char *dir_path) {
+    DIR *dir = opendir(dir_path);
+    if (!dir) return;
+
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
+
+        char path[MAX_PATH];
+        snprintf(path, sizeof(path), "%s/%s", dir_path, entry->d_name);
+
+        struct stat st;
+        if (lstat(path, &st) == 0) {
+            if (S_ISDIR(st.st_mode)) {
+                delete_directory_contents(path);
+                #ifdef _WIN32
+                    _rmdir(path);
+                #else
+                    rmdir(path);
+                #endif
+            } else {
+                remove(path);
+            }
+        }
+    }
+    closedir(dir);
+}
+
 // --- MAIN ---
 
 int main(int argc, char const *argv[]) {
@@ -212,11 +244,19 @@ int main(int argc, char const *argv[]) {
         printf("%s", cur->ready_to_sink);
     } 
     else if (strcmp(argv[1], "push") == 0) {
+        int clean = 0;
+        if (argc >= 3 && strcmp(argv[2], "-c") == 0) {
+            clean = 1;
+        }
         int t_count = 0, i_count = 0;
         char **targets = read_lines(".sinksettings", &t_count);
         char **ignores = read_lines(".sinkignore", &i_count);
         if (!targets) { printf("%s", cur->err_no_targets); return 1; }
         for (int i = 0; i < t_count; i++) {
+            if (clean) {
+                printf(cur->cleaning_target, targets[i]);
+                delete_directory_contents(targets[i]);
+            }
             printf(cur->sinking_to, targets[i]);
             sink_directory(".", targets[i], "", ignores, i_count);
             free(targets[i]);
