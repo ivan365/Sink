@@ -9,10 +9,14 @@
     #include <direct.h>
     #define MKDIR(path) _mkdir(path)
     #define SEP '\\'
+    #define GETCWD _getcwd
+    #define CHDIR _chdir
 #else
     #include <unistd.h>
     #define MKDIR(path) mkdir(path, 0777)
     #define SEP '/'
+    #define GETCWD getcwd
+    #define CHDIR chdir
 #endif
 
 #define MAX_PATH 4096
@@ -228,9 +232,44 @@ void delete_directory_contents(const char *dir_path) {
     closedir(dir);
 }
 
+void locate_project_root() {
+    char start_path[MAX_PATH];
+    if (!GETCWD(start_path, sizeof(start_path))) return;
+
+    char last_path[MAX_PATH] = "";
+    char current_path[MAX_PATH] = "";
+
+    while (1) {
+        struct stat st;
+        if (stat(".sinksettings", &st) == 0) {
+            return;
+        }
+
+        if (!GETCWD(current_path, sizeof(current_path))) {
+            CHDIR(start_path);
+            return;
+        }
+
+        if (strcmp(current_path, last_path) == 0) {
+            CHDIR(start_path);
+            return;
+        }
+
+        strcpy(last_path, current_path);
+
+        if (CHDIR("..") != 0) {
+            CHDIR(start_path);
+            return;
+        }
+    }
+}
+
 // --- MAIN ---
 
 int main(int argc, char const *argv[]) {
+    if (argc >= 2 && strcmp(argv[1], "init") != 0) {
+        locate_project_root();
+    }
     load_lang_config();
     if (argc < 2) { printf("%s", cur->help); return 0; }
 
